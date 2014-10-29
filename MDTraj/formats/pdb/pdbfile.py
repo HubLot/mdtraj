@@ -88,7 +88,7 @@ def _is_url(url):
 
 
 @_FormatRegistry.register_loader('.pdb')
-def load_pdb(filename, stride=None, atom_indices=None, frame=None):
+def load_pdb(filename, stride=None, atom_indices=None, frame=None, replace=True):
     """Load a RCSB Protein Data Bank file from disk.
 
     Parameters
@@ -107,6 +107,10 @@ def load_pdb(filename, stride=None, atom_indices=None, frame=None):
         Use this option to load only a single frame from a trajectory on disk.
         If frame is None, the default, the entire trajectory will be loaded.
         If supplied, ``stride`` will be ignored.
+    replace : bool, default=True
+        Set this option to False to disable the conversion of atom and residue
+        names by the standard ones.
+
 
     Returns
     -------
@@ -132,7 +136,7 @@ def load_pdb(filename, stride=None, atom_indices=None, frame=None):
     atom_indices = cast_indices(atom_indices)
     
     filename = str(filename)
-    with PDBTrajectoryFile(filename) as f:
+    with PDBTrajectoryFile(filename, replace=replace) as f:
         atom_slice = slice(None) if atom_indices is None else atom_indices
         if frame is not None:
             coords = f.positions[[frame], atom_slice, :]
@@ -179,6 +183,9 @@ class PDBTrajectoryFile(object):
     force_overwrite : bool
         If opened in write mode, and a file by the name of `filename` already
         exists on disk, should we overwrite it?
+    replace : bool, default=True
+        Set this option to False to disable the conversion of atom and residue
+        names by the standard ones.
 
     Attributes
     ----------
@@ -193,6 +200,7 @@ class PDBTrajectoryFile(object):
     we will parse common nonstandard atom names during reading, and convert them
     into the standard names. The replacement table used by mdtraj is at
     {mdtraj_source}/formats/pdb/data/pdbNames.xml.
+    You can disable this behavior by setting the ``replace`` parameter to False.
 
     See Also
     --------
@@ -203,13 +211,14 @@ class PDBTrajectoryFile(object):
     _atomNameReplacements = {}
     _chain_names = [chr(ord('A') + i) for i in range(26)]
 
-    def __init__(self, filename, mode='r', force_overwrite=True):
+    def __init__(self, filename, mode='r', force_overwrite=True, replace=True):
         self._open = False
         self._file = None
         self._topology = None
         self._positions = None
         self._mode = mode
         self._last_topology = None
+        self._replace = replace
 
         if mode == 'r':
             PDBTrajectoryFile._loadNameReplacementTables()
@@ -483,10 +492,10 @@ class PDBTrajectoryFile(object):
             c = self._topology.add_chain()
             for residue in chain.iter_residues():
                 resName = residue.get_name()
-                if resName in PDBTrajectoryFile._residueNameReplacements:
+                if self._replace and resName in PDBTrajectoryFile._residueNameReplacements:
                     resName = PDBTrajectoryFile._residueNameReplacements[resName]
                 r = self._topology.add_residue(resName, c, residue.number)
-                if resName in PDBTrajectoryFile._atomNameReplacements:
+                if self._replace and resName in PDBTrajectoryFile._atomNameReplacements:
                     atomReplacements = PDBTrajectoryFile._atomNameReplacements[resName]
                 else:
                     atomReplacements = {}
